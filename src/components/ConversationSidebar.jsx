@@ -193,4 +193,5 @@ const ConversationSidebar = ({
   );
 };
 
+export { ConversationSidebar };
 export default ConversationSidebar;

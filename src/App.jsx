@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-// Removed unused component imports - functionality integrated into main App
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ConversationSidebar } from './components/ConversationSidebar';
-import { AuthContext } from './contexts/AuthContext';
+import { AuthProvider } from './contexts/AuthContext';
 import API_ENDPOINTS from './config/api';
-// App.css removed - using Tailwind CSS for styling
 import { UpgradeBanner } from "./components/ui/upgrade-banner.jsx";
-// conversationAPI removed - using direct API calls instead
+import ChatHistory from './ChatHistory';
+import Welcome from './Welcome';
+import CustomPromptInput from './components/ui/custom-prompt-input';
+import SettingsModal from './SettingsModal';
+import ChatMessage from './ChatMessage';
+
+const MemoizedChatMessage = React.memo(ChatMessage);
 
 const promptSuggestions = [
   "What are you working on?",
@@ -573,62 +577,64 @@ export default function App() {
   const hasStartedChat = messages.length > 0;
 
   return (
-    <div className="antialiased bg-white flex h-screen overflow-hidden" style={{ fontFamily: 'Aptos, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-      <ChatHistory chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId} startNewChat={startNewChat} onSettingsClick={() => setIsSettingsOpen(true)} isCollapsed={isSidebarCollapsed} setIsCollapsed={setIsSidebarCollapsed} />
-      <div className={`flex-1 flex flex-col h-screen relative bg-white transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'ml-0' : 'ml-0'}`}>
-        <main className={`flex-1 overflow-y-auto transition-all duration-500 ease-in-out ${!hasStartedChat ? 'flex items-center justify-center' : 'pt-6 pb-6'}`}>
-          {!hasStartedChat ? (
-            <div className="animate-fade-in transition-all duration-500 ease-in-out">
-              <Welcome suggestion={suggestion} onPromptClick={handleStarterPromptClick} />
+    <AuthProvider>
+      <div className="antialiased bg-white flex h-screen overflow-hidden" style={{ fontFamily: 'Aptos, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+        <ChatHistory chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId} startNewChat={startNewChat} onSettingsClick={() => setIsSettingsOpen(true)} isCollapsed={isSidebarCollapsed} setIsCollapsed={setIsSidebarCollapsed} />
+        <div className={`flex-1 flex flex-col h-screen relative bg-white transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'ml-0' : 'ml-0'}`}>
+          <main className={`flex-1 overflow-y-auto transition-all duration-500 ease-in-out ${!hasStartedChat ? 'flex items-center justify-center' : 'pt-6 pb-6'}`}>
+            {!hasStartedChat ? (
+              <div className="animate-fade-in transition-all duration-500 ease-in-out">
+                <Welcome suggestion={suggestion} onPromptClick={handleStarterPromptClick} />
+              </div>
+            ) : (
+              <div className="w-full max-w-4xl mx-auto px-6 space-y-0 overflow-hidden animate-slide-in-up transition-all duration-500 ease-in-out opacity-0 animate-fade-in-delayed">
+                {messages.map((message, index) => (
+                  <MemoizedChatMessage key={message.id} message={message} onConfirm={onConfirmExecution} onCancel={onCancelExecution} onEdit={handleEditMessage} style={{ '--animation-delay': `${index * 100}ms` }} />
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </main>
+          <footer className={`p-4 w-full bg-white transition-all duration-500 ease-in-out ${!hasStartedChat ? `fixed bottom-32 ${isSidebarCollapsed ? 'left-16' : 'left-64'} right-0 max-w-4xl mx-auto` : ''}`}>
+            <div className="max-w-4xl mx-auto transition-all duration-300 ease-in-out">
+              <CustomPromptInput
+                value={userPrompt}
+                onChange={(e) => setUserPrompt(e.target.value)}
+                onSubmit={analyzePromptWithAI}
+                placeholder="Ask me Tensora AI..."
+                disabled={isLoading}
+                selectedProvider={selectedProvider}
+                onProviderChange={setSelectedProvider}
+                className="shadow-sm border-gray-300 focus-within:ring-1 focus-within:ring-gray-400 focus-within:border-gray-400 rounded-xl"
+              />
             </div>
-          ) : (
-            <div className="w-full max-w-4xl mx-auto px-6 space-y-0 overflow-hidden animate-slide-in-up transition-all duration-500 ease-in-out opacity-0 animate-fade-in-delayed">
-              {messages.map((message, index) => (
-                <MemoizedChatMessage key={message.id} message={message} onConfirm={onConfirmExecution} onCancel={onCancelExecution} onEdit={handleEditMessage} style={{ '--animation-delay': `${index * 100}ms` }} />
-              ))}
-              <div ref={messagesEndRef} />
+          </footer>
+          
+          {/* Upgrade Banner at the bottom */}
+          {!hasStartedChat && (
+            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
+              <UpgradeBanner 
+                buttonText="Developing Tensora Own Modal"
+                description="for unlimited AI conversations and premium features"
+                onClose={() => {/* Handle close if needed */}}
+                onClick={() => {/* Handle upgrade click */}}
+              />
             </div>
           )}
-        </main>
-        <footer className={`p-4 w-full bg-white transition-all duration-500 ease-in-out ${!hasStartedChat ? `fixed bottom-32 ${isSidebarCollapsed ? 'left-16' : 'left-64'} right-0 max-w-4xl mx-auto` : ''}`}>
-          <div className="max-w-4xl mx-auto transition-all duration-300 ease-in-out">
-            <CustomPromptInput
-              value={userPrompt}
-              onChange={(e) => setUserPrompt(e.target.value)}
-              onSubmit={analyzePromptWithAI}
-              placeholder="Ask me Tensora AI..."
-              disabled={isLoading}
-              selectedProvider={selectedProvider}
-              onProviderChange={setSelectedProvider}
-              className="shadow-sm border-gray-300 focus-within:ring-1 focus-within:ring-gray-400 focus-within:border-gray-400 rounded-xl"
-            />
-          </div>
-        </footer>
-        
-        {/* Upgrade Banner at the bottom */}
-        {!hasStartedChat && (
-          <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-            <UpgradeBanner 
-              buttonText="Developing Tensora Own Modal"
-              description="for unlimited AI conversations and premium features"
-              onClose={() => {/* Handle close if needed */}}
-              onClick={() => {/* Handle upgrade click */}}
-            />
-          </div>
-        )}
+        </div>
+        <SettingsModal 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)} 
+          url={url} 
+          setUrl={setUrl} 
+          selectedProvider={selectedProvider} 
+          setSelectedProvider={setSelectedProvider} 
+          autoExecute={autoExecute} 
+          setAutoExecute={setAutoExecute}
+          useStreaming={useStreaming}
+          setUseStreaming={setUseStreaming}
+        />
       </div>
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        url={url} 
-        setUrl={setUrl} 
-        selectedProvider={selectedProvider} 
-        setSelectedProvider={setSelectedProvider} 
-        autoExecute={autoExecute} 
-        setAutoExecute={setAutoExecute}
-        useStreaming={useStreaming}
-        setUseStreaming={setUseStreaming}
-      />
-    </div>
+    </AuthProvider>
   );
 }
