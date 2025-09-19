@@ -1,0 +1,70 @@
+import json
+import requests
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+class JSONConverter:
+    def __init__(self):
+        self.api_key = os.getenv("GEMINI_CONVERTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_CONVERTER_API_KEY environment variable not set")
+        
+        # FIXED: Corrected the typo from '::' to ':' in the URL
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
+
+    def convert_json(self, json_data):
+        if isinstance(json_data, str):
+            try:
+                json_data = json.loads(json_data)
+            except json.JSONDecodeError:
+                return json_data
+
+        if not isinstance(json_data, (dict, list)):
+            return str(json_data)
+
+        prompt = self._create_prompt(json_data)
+
+        try:
+            return self._call_gemini_api(prompt)
+        except Exception as e:
+            print(f"⚠️ API call failed: {e}")
+            return str(json_data) # Fallback to simple string
+
+    def _create_prompt(self, json_data):
+        """Build the instruction prompt for Gemini."""
+        json_str = json.dumps(json_data, indent=2)
+        
+        return f"""
+Translate the following JSON data into a very simple, user-friendly message.
+Imagine you are explaining this to a non-technical person who does not understand JSON.
+
+Rules:
+- Write it as a short, natural language paragraph or a few simple bullet points.
+- Do NOT list the technical key names (like "status", "userId", etc.).
+- Convert the data into a meaningful explanation. For example, instead of "status: success", say "The operation was successful."
+- Be concise and get straight to the point.
+
+JSON:
+{json_str}
+"""
+
+    def _call_gemini_api(self, prompt):
+        """Send request to Gemini and return the summary text."""
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 500}
+        }
+
+        response = requests.post(self.api_url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        try:
+            return data.get("candidates")[0].get("content").get("parts")[0].get("text").strip()
+        except (IndexError, AttributeError):
+            print("⚠️ Could not parse Gemini response.")
+            return json.dumps(data, indent=2)

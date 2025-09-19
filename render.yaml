@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: tensora-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHONPATH
+        value: /app
+      # IMPORTANT: Add your Google Cloud credentials as environment variable
+      # - key: GOOGLE_CLOUD_CREDENTIALS_JSON
+      #   value: '{"type":"service_account","project_id":"your-project",...}'
+      # OR use Render's environment variable groups for better security
+      # - key: GOOGLE_CLOUD_CREDENTIALS_JSON
+      #   fromGroup: google-cloud-secrets

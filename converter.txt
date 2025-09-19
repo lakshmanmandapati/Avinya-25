@@ -1,0 +1,74 @@
+import json
+import requests
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file
+load_dotenv()
+
+class JSONConverter:
+    """
+    A class to convert any JSON object into a simple, human-readable summary
+    using the Gemini API. It's designed to be flexible and handle diverse JSON structures.
+    """
+    def __init__(self):
+        """
+        Initializes the converter and retrieves the API key from environment variables.
+        """
+        self.api_key = os.getenv("GEMINI_CONVERTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_CONVERTER_API_KEY environment variable not set")
+        
+        # Use the powerful and cost-effective gemini-1.5-flash model
+        model = "gemini-1.5-flash"
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+
+    def convert_json(self, json_data):
+        """
+        Converts a JSON object or string into a simple, human-readable summary.
+        This is the main public method to call.
+        """
+        if isinstance(json_data, str):
+            try:
+                json_data = json.loads(json_data)
+            except json.JSONDecodeError:
+                # If it's a string that isn't JSON, just return it as-is
+                return json_data
+
+        if not isinstance(json_data, (dict, list)):
+            return str(json_data)
+
+        prompt = self._create_prompt(json_data)
+
+        try:
+            return self._call_gemini_api(prompt)
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ API request failed: {e}")
+            return "Sorry, there was a network problem and I couldn't get the summary."
+        except Exception as e:
+            print(f"⚠️ An unexpected error occurred: {e}")
+            return "Sorry, an unexpected error occurred while processing the data."
+
+    def _create_prompt(self, json_data):
+        """
+        Builds a general and powerful instruction prompt for Gemini that works on ANY JSON structure.
+        """
+        json_str = json.dumps(json_data, indent=2)
+        
+        # This prompt teaches the model the RULES of conversion, making it far more flexible.
+        return f"""
+You are an expert AI assistant that translates raw JSON data into clear, simple, human-readable summaries.
+
+**Your Goal:**
+Summarize the JSON below for a non-technical person. Your summary must be elegant, concise, and easy to understand.
+
+**Core Rules (Follow these strictly):**
+1.  **NEVER Mention JSON Keys:** Do not use the technical key names (e.g., "userId", "isPremiumMember", "status"). Extract the *meaning* from the values.
+2.  **Synthesize, Don't List:** Combine related pieces of information. For example, instead of "Status: Shipped. Tracking: 12345", write "The item has shipped and can be tracked with the number 12345."
+3.  **Format Lists Clearly:** If the JSON contains a list of items (an array), present them as a simple bulleted list in your summary.
+4.  **Be Direct:** Start the summary immediately. Do not say "This is a summary of the JSON" or "The JSON shows...".
+5.  **Handle Any Structure:** This JSON can be about anything—a user profile, a system status, a transaction, an error message, etc. Adapt your summary to the content.
+
+**JSON Data to Translate:**
+```json
+{json_str}

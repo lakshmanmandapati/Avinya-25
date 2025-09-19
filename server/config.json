@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "Zapier": { 
+      "url": "https://mcp.zapier.com/api/mcp/s/NjMwZDhjNDQtZTRkYy00YzY3LWIyNGYtZDZhYmIxNThlMjlmOmIxODkzODYyLWY5ZWMtNGY1MC1hZGQ5LWVjYThlYjhiYzRjNA==/mcp" 
+    },
+    "GitHub": { 
+      "url": "http://localhost:5000/mcp" 
+    },
+    "Notion": { 
+      "url": "http://localhost:5001/mcp" 
+    }
+  }
+}
