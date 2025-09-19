@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ConversationSidebar } from './components/ConversationSidebar';
 import { AuthContext } from './contexts/AuthContext';
 import API_ENDPOINTS from './config/api';
-import './App.css';
+// App.css removed - using Tailwind CSS for styling
 import { UpgradeBanner } from "./components/ui/upgrade-banner.jsx";
 import { conversationAPI } from "./lib/mcpUtils.js";
 
