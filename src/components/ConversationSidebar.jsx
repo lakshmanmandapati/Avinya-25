@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { conversationAPI } from '../lib/mcpUtils';
+import API_ENDPOINTS from '../config/api';
 import { Trash2, Plus, MessageSquare, Calendar, Settings, LogOut, ChevronLeft, User } from 'lucide-react';
 
 const ConversationSidebar = ({ 
@@ -21,8 +21,9 @@ const ConversationSidebar = ({
     try {
       setLoading(true);
       setError(null);
-      const response = await conversationAPI.getConversations();
-      setConversations(response.conversations || []);
+      const response = await fetch(`${API_ENDPOINTS.BASE_URL}/conversations`);
+      const data = await response.json();
+      setConversations(data.conversations || []);
     } catch (err) {
       console.error('Failed to load conversations:', err);
       setError('Failed to load conversations');
@@ -33,10 +34,15 @@ const ConversationSidebar = ({
 
   const handleNewConversation = async () => {
     try {
-      const response = await conversationAPI.createConversation();
+      const response = await fetch(`${API_ENDPOINTS.BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Chat' })
+      });
+      const data = await response.json();
       const newConversation = {
-        id: response.conversation_id,
-        title: response.title,
+        id: data.conversation_id,
+        title: data.title,
         created_at: new Date().toISOString(),
         message_count: 0
       };
@@ -56,7 +62,9 @@ const ConversationSidebar = ({
     }
 
     try {
-      await conversationAPI.deleteConversation(conversationId);
+      await fetch(`${API_ENDPOINTS.BASE_URL}/conversations/${conversationId}`, {
+        method: 'DELETE'
+      });
       setConversations(prev => prev.filter(conv => conv.id !== conversationId));
       
       // If we deleted the current conversation, create a new one
