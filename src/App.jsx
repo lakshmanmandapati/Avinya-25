@@ -5,7 +5,7 @@ import { AuthContext } from './contexts/AuthContext';
 import API_ENDPOINTS from './config/api';
 // App.css removed - using Tailwind CSS for styling
 import { UpgradeBanner } from "./components/ui/upgrade-banner.jsx";
-import { conversationAPI } from "./lib/mcpUtils.js";
+// conversationAPI removed - using direct API calls instead
 
 const promptSuggestions = [
   "What are you working on?",
@@ -161,8 +161,13 @@ export default function App() {
     let conversationId = chats[chatId]?.conversationId;
     if (!conversationId) {
       try {
-        const response = await conversationAPI.createConversation();
-        conversationId = response.conversation_id;
+        const response = await fetch(`${API_ENDPOINTS.BASE_URL}/conversations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: chats[chatId]?.title || 'New Chat' })
+        });
+        const data = await response.json();
+        conversationId = data.conversation_id;
         
         // Update the chat with the conversation ID
         setChats(prev => ({
@@ -251,8 +256,13 @@ export default function App() {
     let conversationId = chats[chatId]?.conversationId;
     if (!conversationId) {
       try {
-        const response = await conversationAPI.createConversation();
-        conversationId = response.conversation_id;
+        const response = await fetch(`${API_ENDPOINTS.BASE_URL}/conversations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: chats[chatId]?.title || 'New Chat' })
+        });
+        const data = await response.json();
+        conversationId = data.conversation_id;
         
         // Update the chat with the conversation ID
         setChats(prev => ({
