@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { ChatInterface } from './components/ChatInterface';
-import { Welcome } from './Welcome';
+// Removed unused component imports - functionality integrated into main App
 import { ConversationSidebar } from './components/ConversationSidebar';
 import { AuthContext } from './contexts/AuthContext';
 import API_ENDPOINTS from './config/api';
