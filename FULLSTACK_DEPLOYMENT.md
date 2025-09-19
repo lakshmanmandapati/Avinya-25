@@ -43,13 +43,22 @@ In Render dashboard, go to **Environment** tab and add:
 
 ```
 GOOGLE_CLOUD_CREDENTIALS_JSON=[YOUR_COMPLETE_GCP_SERVICE_ACCOUNT_JSON_HERE]
+GEMINI_API_KEY=[YOUR_GEMINI_API_KEY]
+OPENAI_API_KEY=[YOUR_OPENAI_API_KEY]
+CLAUDE_API_KEY=[YOUR_CLAUDE_API_KEY]
+GROQ_API_KEY=[YOUR_GROQ_API_KEY]
 
 PORT=4000
 FLASK_ENV=production
 PYTHONPATH=/app
 ```
 
-**Note**: Replace `[YOUR_COMPLETE_GCP_SERVICE_ACCOUNT_JSON_HERE]` with your actual Google Cloud service account JSON content as a single line string.
+**Required Environment Variables:**
+- `GOOGLE_CLOUD_CREDENTIALS_JSON`: Your complete Google Cloud service account JSON as a single line string
+- `GEMINI_API_KEY`: Your Google Gemini API key (required for AI responses)
+- `OPENAI_API_KEY`: Your OpenAI API key (optional, for GPT models)
+- `CLAUDE_API_KEY`: Your Anthropic Claude API key (optional)
+- `GROQ_API_KEY`: Your Groq API key (optional, for Llama models)
 
 ### Step 5: Deploy
 1. Click **"Create Web Service"**
@@ -100,6 +109,14 @@ export const API_ENDPOINTS = {
 In Vercel dashboard, go to **Settings** → **Environment Variables**:
 ```
 VITE_API_URL = https://tensora-backend.onrender.com
+
+# Firebase Configuration
+VITE_FIREBASE_API_KEY = AIzaSyCJpV-jzhPYkVXD5Q5iYlq4Zx5iBMbjN34
+VITE_FIREBASE_AUTH_DOMAIN = tensora-ai-a9fde.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID = tensora-ai-a9fde
+VITE_FIREBASE_STORAGE_BUCKET = tensora-ai-a9fde.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID = 70844209351
+VITE_FIREBASE_APP_ID = 1:70844209351:web:a1b2c3d4e5f6g7h8i9j0k1l2
 ```
 
 ### Step 5: Deploy

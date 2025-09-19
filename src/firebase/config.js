@@ -4,12 +4,12 @@ import { getAuth, GoogleAuthProvider, GithubAuthProvider } from 'firebase/auth';
 
 // Your Firebase config object
 const firebaseConfig = {
-  apiKey: "AIzaSyCJpV-jzhPYkVXD5Q5iYlq4Zx5iBMbjN34",
-  authDomain: "tensora-ai-a9fde.firebaseapp.com",
-  projectId: "tensora-ai-a9fde",
-  storageBucket: "tensora-ai-a9fde.appspot.com",
-  messagingSenderId: "70844209351",
-  appId: "1:70844209351:web:a1b2c3d4e5f6g7h8i9j0k1l2"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCJpV-jzhPYkVXD5Q5iYlq4Zx5iBMbjN34",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "tensora-ai-a9fde.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "tensora-ai-a9fde",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "tensora-ai-a9fde.appspot.com",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "70844209351",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:70844209351:web:a1b2c3d4e5f6g7h8i9j0k1l2"
 };
 
 // Initialize Firebase
