@@ -406,3 +406,6 @@ export const CustomPromptInput = React.forwardRef(({
 });
 
 CustomPromptInput.displayName = "CustomPromptInput";
+
+
+export default CustomPromptInput;
