@@ -17,10 +17,14 @@ app = Flask(__name__)
 # Configure CORS to allow requests from your frontend
 CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:4000", "*"])
 
+# Modal endpoint for Groq provider
+MODAL_ENDPOINT = "https://imadabathuniharsha--llama3-serve-optimized-model-web-generate.modal.run"
+
 # Initialize Google Cloud Speech client using environment variables
+# This supports both production (env vars) and development (local file)
 client = None
 try:
-    # Try to initialize using environment variables first
+    # Try to initialize using environment variables first (PRODUCTION - Render)
     if os.getenv("GOOGLE_CLOUD_CREDENTIALS_JSON"):
         # Use credentials from environment variable (for production)
         import tempfile
@@ -562,7 +566,7 @@ def proxy_ai():
         prompt = data.get("prompt")
         mcp_url = data.get("mcpUrl")
         server_name = data.get("serverName")
-        conversation_id = data.get("conversation_id")  # New: conversation tracking
+        conversation_id = data.get("conversation_id")
         
         # Support serverName routing
         if not mcp_url and server_name:
@@ -572,14 +576,6 @@ def proxy_ai():
         
         if not prompt:
             return jsonify({"error": "Missing prompt"}), 400
-            
-        api_keys = {
-            "gemini": os.getenv("GEMINI_API_KEY"),
-        }
-        
-        # Always check for the Gemini key since all requests are routed to it.
-        if not api_keys["gemini"]:
-            return jsonify({"error": "API key for Gemini not configured. All models are currently routed to Gemini."}), 400
         
         # Create new conversation if not provided
         if not conversation_id:
@@ -595,6 +591,76 @@ def proxy_ai():
             {"provider": provider, "mcp_url": mcp_url}
         )
         
+        # Check if provider is groq - use Modal endpoint
+        if provider == "groq":
+            print("🔄 Using Groq provider - routing to Modal endpoint")
+            
+            try:
+                # Call Modal endpoint directly
+                modal_response = requests.post(
+                    MODAL_ENDPOINT,
+                    headers={"Content-Type": "application/json"},
+                    json={"prompt": prompt},
+                    timeout=60
+                )
+                
+                if modal_response.status_code == 200:
+                    modal_data = modal_response.json()
+                    response_text = modal_data.get("response", "No response from Modal endpoint")
+                    
+                    # Return in the expected format
+                    cursor_response = {
+                        "mode": "chat",
+                        "response": response_text,
+                        "plan": "Tensora AI response",
+                        "actions": [],
+                        "confidence": 100,
+                        "conversation_id": conversation_id
+                    }
+                    
+                    # Save assistant response to conversation
+                    conversation_manager.add_message(
+                        conversation_id,
+                        "assistant",
+                        response_text,
+                        "chat",
+                        {"mode": "chat", "provider": "groq", "confidence": 100}
+                    )
+                    
+                    # Generate and update title for new conversations
+                    try:
+                        conversation = conversation_manager.get_conversation(conversation_id)
+                        if conversation and conversation.get("message_count", 0) <= 2:
+                            title = title_generator.generate_title(prompt, "groq")
+                            conversation_manager.update_conversation_title(conversation_id, title)
+                            print(f"Generated title for conversation {conversation_id}: {title}")
+                    except Exception as title_error:
+                        print(f"Failed to generate title: {title_error}")
+                    
+                    return jsonify(cursor_response)
+                else:
+                    error_msg = f"Modal endpoint error: {modal_response.status_code}"
+                    print(error_msg)
+                    return jsonify({"error": error_msg}), 500
+                    
+            except Exception as modal_error:
+                print(f"Modal endpoint call failed: {modal_error}")
+                return jsonify({"error": f"Failed to call Modal endpoint: {str(modal_error)}"}), 500
+        
+        # For OpenAI and Claude, redirect to Gemini
+        if provider in ["openai", "claude"]:
+            print(f"🔄 Using {provider} provider - redirecting to Gemini")
+            effective_provider = "gemini"
+        else:
+            effective_provider = provider
+        
+        # Check for Gemini API key (required for all non-groq providers)
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            return jsonify({"error": "API key for Gemini not configured. All non-Groq providers require Gemini API key."}), 400
+            
+        api_keys = {"gemini": gemini_api_key}
+        
         # First, fetch available tools from MCP
         tools = []
         if mcp_url:
@@ -607,7 +673,7 @@ def proxy_ai():
                         "url": mcp_url,
                         "action": "listTools"
                     },
-                    timeout=10  # Add timeout to prevent hanging
+                    timeout=10
                 )
                 
                 if tools_response.status_code == 200:
@@ -616,23 +682,20 @@ def proxy_ai():
                     print("Found tools:", len(tools))
                 else:
                     print(f"Failed to fetch tools: {tools_response.status_code}")
-                    # Don't fail the request if tools can't be fetched
             except Exception as tools_error:
                 print("Failed to fetch tools:", str(tools_error))
-                # Continue without tools for chat mode
                 tools = []
         
         # Analyze intent using the intent parser
         intent = intent_parser.analyze_intent(prompt, tools)
         print("Detected intent:", intent)
         
-        # Get conversation history for context (used by both chat and tool modes)
+        # Get conversation history for context
         conversation_history = []
         if conversation_id:
             try:
                 conversation = conversation_manager.get_conversation(conversation_id)
                 if conversation and conversation.get("messages"):
-                    # Get last 10 messages for context (to avoid token limits)
                     recent_messages = conversation["messages"][-10:]
                     for msg in recent_messages:
                         if msg["role"] in ["user", "assistant"]:
@@ -657,10 +720,10 @@ def proxy_ai():
                 {"mode": "chat", "confidence": response_data.get("confidence", 100)}
             )
             
-            # Generate and update title for new conversations (first user message)
+            # Generate and update title for new conversations
             try:
                 conversation = conversation_manager.get_conversation(conversation_id)
-                if conversation and conversation.get("message_count", 0) <= 2:  # User + Assistant message
+                if conversation and conversation.get("message_count", 0) <= 2:
                     title = title_generator.generate_title(prompt, provider)
                     conversation_manager.update_conversation_title(conversation_id, title)
                     print(f"Generated title for conversation {conversation_id}: {title}")
@@ -685,134 +748,64 @@ def proxy_ai():
         
         system_prompt = intent_parser.get_enhanced_system_prompt(tools_info, prompt, "tool")
         
-        # Use faster models for better performance
-        models = {
-            "openai": "gpt-3.5-turbo",
-            "gemini": "gemini-2.5-flash",
-            "claude": "claude-3-haiku-20240307",
-            "groq": "llama3-8b-8192"
+        # Use Gemini for all providers
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
+        
+        # Build conversation contents for Gemini
+        contents = []
+        
+        # Add system prompt as first message
+        contents.append({
+            "parts": [{"text": system_prompt}],
+            "role": "user"
+        })
+        contents.append({
+            "parts": [{"text": "I understand. I'll help you with your questions and remember our conversation context."}],
+            "role": "model"
+        })
+        
+        # Add conversation history
+        if conversation_history:
+            for msg in conversation_history:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({
+                    "parts": [{"text": msg["content"]}],
+                    "role": role
+                })
+        
+        # Add current user message
+        contents.append({
+            "parts": [{"text": prompt}],
+            "role": "user"
+        })
+        
+        body = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.7, 
+                "maxOutputTokens": 2000,
+                "response_mime_type": "application/json"
+            }
         }
         
-        # Force all requests to use Gemini
-        effective_provider = "gemini"
-        print(f"User selected '{provider}', but routing to '{effective_provider}' as per configuration.")
-        
-        if effective_provider == "openai":
-            endpoint = "https://api.openai.com/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_keys.get('openai')}"
-            }
-            body = {
-                "model": models["openai"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Please analyze my request and provide a detailed plan with specific actions."}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 2000,
-                "response_format": {"type": "json_object"}
-            }
-        elif effective_provider == "gemini":
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_keys['gemini']}"
-            headers = {
-                "Content-Type": "application/json"
-            }
-            
-            # Build conversation contents for Gemini
-            contents = []
-            
-            # Add system prompt as first message
-            contents.append({
-                "parts": [{"text": system_prompt}],
-                "role": "user"
-            })
-            contents.append({
-                "parts": [{"text": "I understand. I'll help you with your questions and remember our conversation context."}],
-                "role": "model"
-            })
-            
-            # Add conversation history
-            if conversation_history:
-                for msg in conversation_history:
-                    role = "user" if msg["role"] == "user" else "model"
-                    contents.append({
-                        "parts": [{"text": msg["content"]}],
-                        "role": role
-                    })
-            
-            # Add current user message
-            contents.append({
-                "parts": [{"text": prompt}],
-                "role": "user"
-            })
-            
-            body = {
-                "contents": contents,
-                "generationConfig": {
-                    "temperature": 0.7, 
-                    "maxOutputTokens": 2000,
-                    "response_mime_type": "application/json"
-                }
-            }
-        elif effective_provider == "claude":
-            endpoint = "https://api.anthropic.com/v1/messages"
-            headers = {
-                "Content-Type": "application/json",
-                "x-api-key": api_keys.get("claude"),
-                "anthropic-version": "2023-06-01"
-            }
-            body = {
-                "model": models["claude"],
-                "max_tokens": 2000,
-                "temperature": 0.7,
-                "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": "Please analyze my request and provide a detailed plan with specific actions."}
-                ]
-            }
-        elif effective_provider == "groq":
-            endpoint = "https://api.groq.com/openai/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_keys.get('groq')}"
-            }
-            body = {
-                "model": models["groq"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Please analyze my request and provide a detailed plan with specific actions."}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 2000,
-                "response_format": {"type": "json_object"}
-            }
-        else:
-            return jsonify({"error": f"Unsupported effective provider: {effective_provider}"}), 400
-        
-        print(f"Sending request to {effective_provider} API")
+        print(f"Sending request to Gemini API (for {provider} provider)")
         response = requests.post(
             endpoint,
             headers=headers,
             json=body,
-            timeout=60  # Add timeout
+            timeout=60
         )
         
         if not response.ok:
             error_data = response.json()
-            print(f"{effective_provider} API error:", error_data)
-            return jsonify({"error": f"{effective_provider} API error: {error_data.get('error', {}).get('message', response.reason)}"}), 500
+            print(f"Gemini API error:", error_data)
+            return jsonify({"error": f"Gemini API error: {error_data.get('error', {}).get('message', response.reason)}"}), 500
         
         response_data = response.json()
         
-        # Parse response based on the effective provider
-        response_text = ""
-        if effective_provider in ["openai", "groq"]:
-            response_text = response_data["choices"][0]["message"]["content"]
-        elif effective_provider == "gemini":
-            response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-        elif effective_provider == "claude":
-            response_text = response_data["content"][0]["text"]
+        # Parse response from Gemini
+        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
         
         # Extract JSON from response
         ai_response = {}
@@ -827,7 +820,6 @@ def proxy_ai():
                 except json.JSONDecodeError as parse_error:
                     print("Failed to parse JSON, using fallback structure:", parse_error)
                     print("Raw response:", response_text)
-                    # Create fallback structure from raw text
                     ai_response = {
                         "plan": response_text.strip(),
                         "actions": [],
@@ -835,9 +827,8 @@ def proxy_ai():
                     }
             else:
                 print("No JSON found, creating fallback structure from response:", response_text)
-                # Create fallback structure from raw text
                 ai_response = {
-                    "plan": response_text.strip() if response_text.strip() else "AI generated a plan",
+                    "plan": response_text.strip() if response_text.strip() else "AI generated plan",
                     "actions": [],
                     "confidence": 70
                 }
@@ -867,7 +858,7 @@ def proxy_ai():
         # Generate and update title for new conversations
         try:
             conversation = conversation_manager.get_conversation(conversation_id)
-            if conversation and conversation.get("message_count", 0) <= 2:  # User + Assistant message
+            if conversation and conversation.get("message_count", 0) <= 2:
                 title = title_generator.generate_title(prompt, provider)
                 conversation_manager.update_conversation_title(conversation_id, title)
                 print(f"Generated title for conversation {conversation_id}: {title}")
@@ -963,113 +954,91 @@ def proxy_ai_execute():
 
 def handle_chat_mode(provider, prompt, api_keys, conversation_history=None):
     try:
-        # Force all chat requests to use Gemini
-        effective_provider = "gemini"
-        print(f"Chat Mode: User selected '{provider}', routing to '{effective_provider}'.")
+        # Check if provider is groq - use Modal endpoint
+        if provider == "groq":
+            print("🔄 Chat Mode: Using Groq provider - routing to Modal endpoint")
+            
+            try:
+                # Call Modal endpoint directly
+                modal_response = requests.post(
+                    MODAL_ENDPOINT,
+                    headers={"Content-Type": "application/json"},
+                    json={"prompt": prompt},
+                    timeout=60
+                )
+                
+                if modal_response.status_code == 200:
+                    modal_data = modal_response.json()
+                    response_text = modal_data.get("response", "No response from Modal endpoint")
+                    
+                    # Return in the expected format
+                    return jsonify({
+                        "mode": "chat",
+                        "response": response_text,
+                        "plan": "Tensora AI response",
+                        "actions": [],
+                        "confidence": 100
+                    })
+                else:
+                    error_msg = f"Modal endpoint error: {modal_response.status_code}"
+                    print(error_msg)
+                    return jsonify({"error": error_msg}), 500
+                    
+            except Exception as modal_error:
+                print(f"Modal endpoint call failed: {modal_error}")
+                return jsonify({"error": f"Failed to call Modal endpoint: {str(modal_error)}"}), 500
         
-        models = {
-            "openai": "gpt-3.5-turbo",
-            "gemini": "gemini-2.5-flash", 
-            "claude": "claude-3-haiku-20240307",
-            "groq": "llama3-8b-8192"
-        }
+        # For OpenAI and Claude, redirect to Gemini
+        if provider in ["openai", "claude"]:
+            print(f"🔄 Chat Mode: Using {provider} provider - redirecting to Gemini")
+            effective_provider = "gemini"
+        else:
+            effective_provider = provider
+        
+        # Use Gemini for all non-groq providers
+        gemini_api_key = api_keys.get("gemini")
+        if not gemini_api_key:
+            return jsonify({"error": "Gemini API key not configured"}), 400
         
         system_prompt = intent_parser.get_enhanced_system_prompt([], prompt, "chat")
         
-        if effective_provider == "openai":
-            endpoint = "https://api.openai.com/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_keys.get('openai')}"
-            }
-            
-            # Build messages array for OpenAI
-            messages = [{"role": "system", "content": system_prompt}]
-            
-            # Add conversation history
-            if conversation_history:
-                messages.extend(conversation_history)
-            
-            # Add current user message
-            messages.append({"role": "user", "content": prompt})
-            
-            body = {
-                "model": models["openai"],
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-        elif effective_provider == "gemini":
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_keys['gemini']}"
-            headers = {"Content-Type": "application/json"}
-            
-            # Build conversation contents for Gemini
-            contents = []
-            
-            # Add system prompt as first message
-            contents.append({
-                "parts": [{"text": system_prompt}],
-                "role": "user"
-            })
-            contents.append({
-                "parts": [{"text": "I understand. I'll help you with your questions and remember our conversation context."}],
-                "role": "model"
-            })
-            
-            # Add conversation history
-            if conversation_history:
-                for msg in conversation_history:
-                    role = "user" if msg["role"] == "user" else "model"
-                    contents.append({
-                        "parts": [{"text": msg["content"]}],
-                        "role": role
-                    })
-            
-            # Add current user message
-            contents.append({
-                "parts": [{"text": prompt}],
-                "role": "user"
-            })
-            
-            body = {
-                "contents": contents,
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1000}
-            }
-        elif effective_provider == "claude":
-            endpoint = "https://api.anthropic.com/v1/messages"
-            headers = {
-                "Content-Type": "application/json",
-                "x-api-key": api_keys.get("claude"),
-                "anthropic-version": "2023-06-01"
-            }
-            body = {
-                "model": models["claude"],
-                "max_tokens": 1000,
-                "temperature": 0.7,
-                "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
-            }
-        elif effective_provider == "groq":
-            endpoint = "https://api.groq.com/openai/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_keys.get('groq')}"
-            }
-            body = {
-                "model": models["groq"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-        else:
-            return jsonify({"error": f"Unsupported effective provider: {effective_provider}"}), 400
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
         
-        print(f"Sending chat request to {effective_provider} API")
+        # Build conversation contents for Gemini
+        contents = []
+        
+        # Add system prompt as first message
+        contents.append({
+            "parts": [{"text": system_prompt}],
+            "role": "user"
+        })
+        contents.append({
+            "parts": [{"text": "I understand. I'll help you with your questions and remember our conversation context."}],
+            "role": "model"
+        })
+        
+        # Add conversation history
+        if conversation_history:
+            for msg in conversation_history:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({
+                    "parts": [{"text": msg["content"]}],
+                    "role": role
+                })
+        
+        # Add current user message
+        contents.append({
+            "parts": [{"text": prompt}],
+            "role": "user"
+        })
+        
+        body = {
+            "contents": contents,
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1000}
+        }
+        
+        print(f"Sending chat request to Gemini API (for {provider} provider)")
         response = requests.post(
             endpoint,
             headers=headers,
@@ -1079,21 +1048,15 @@ def handle_chat_mode(provider, prompt, api_keys, conversation_history=None):
         
         if not response.ok:
             error_data = response.json()
-            print(f"{effective_provider} API error:", error_data)
+            print(f"Gemini API error:", error_data)
             return jsonify({
-                "error": f"{effective_provider} API error: {error_data.get('error', {}).get('message', response.reason)}"
+                "error": f"Gemini API error: {error_data.get('error', {}).get('message', response.reason)}"
             }), 500
         
         response_data = response.json()
         
-        # Parse response based on the effective provider
-        response_text = ""
-        if effective_provider in ["openai", "groq"]:
-            response_text = response_data["choices"][0]["message"]["content"]
-        elif effective_provider == "gemini":
-            response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-        elif effective_provider == "claude":
-            response_text = response_data["content"][0]["text"]
+        # Parse response from Gemini
+        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
         
         # Return chat response in a format compatible with the frontend
         return jsonify({
@@ -1279,4 +1242,6 @@ def health_check():
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 4000))
     print(f"🚀 MCP Proxy running at http://0.0.0.0:{port}")
+    print(f"🔗 Groq provider uses Modal endpoint: {MODAL_ENDPOINT}")
+    print(f"🔄 OpenAI and Claude providers redirect to Gemini")
     app.run(host='0.0.0.0', port=port, debug=True)
