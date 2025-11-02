@@ -233,8 +233,7 @@ export const CustomPromptInput = React.forwardRef(({
       const formData = new FormData();
       formData.append('file', audioBlob, 'recording.webm');
 
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${API_BASE_URL}/speech-to-text`, {
+      const response = await fetch('http://localhost:4000/speech-to-text', {
         method: 'POST',
         body: formData,
       });
@@ -351,11 +350,10 @@ export const CustomPromptInput = React.forwardRef(({
                   onChange={(e) => onProviderChange && onProviderChange(e.target.value)}
                   disabled={disabled}
                 >
-                  <option value="Tensora">Tensora AI(Dev)</option>
+                  <option value="groq">Tensora AI(Dev)</option>
                   <option value="gemini">Gemini Flash 2.5</option>
                   <option value="openai">OpenAI GPT-4</option>
                   <option value="claude">Claude 3.5</option>
-                  <option value="groq">Groq Llama</option>
                 </select>
               </div>
 
@@ -408,5 +406,3 @@ export const CustomPromptInput = React.forwardRef(({
 });
 
 CustomPromptInput.displayName = "CustomPromptInput";
-
-export default CustomPromptInput;
