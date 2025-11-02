@@ -15,7 +15,7 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configure CORS to allow requests from your frontend
-CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:4000", "*"])
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000","https://tensora-dev.vercel.app", "http://localhost:4000", "*"])
 
 # Modal endpoint for Groq provider
 MODAL_ENDPOINT = "https://imadabathuniharsha--llama3-serve-optimized-model-web-generate.modal.run"
